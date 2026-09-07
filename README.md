@@ -322,6 +322,56 @@ Unit tests (JUnit 4) live under `app/src/test`:
 
 ---
 
+## Releases
+
+Releases are built automatically by
+[`.github/workflows/release.yml`](.github/workflows/release.yml). Pushing a semver tag
+runs the unit tests, builds a **signed** release APK, and publishes a GitHub Release with
+the APK and its SHA-256 checksum attached:
+
+```bash
+git tag -a v1.0.1 -m "RadioChat APRS 1.0.1"
+git push origin v1.0.1
+```
+
+`versionName` comes from the tag and `versionCode` is derived from it
+(`1.0.1` → `10001`), so the two can never drift apart. Release notes are taken from the
+matching `## [1.0.1]` section of [CHANGELOG.md](CHANGELOG.md) when there is one. A tag
+with a suffix (`v1.1.0-beta1`) is published as a pre-release.
+
+### One-time signing setup (maintainer)
+
+Android identifies an app by its **signing key**, not by its version. An update signed
+with a different key is rejected by the device: users would have to uninstall and lose
+their chat history and settings. So the key below is created **once** and kept for the
+life of the app.
+
+```bash
+keytool -genkeypair -v -keystore release.jks -alias radiochat \
+  -keyalg RSA -keysize 4096 -validity 10000
+```
+
+> **Back up `release.jks` and its passwords somewhere you cannot lose them** — a password
+> manager and an offline copy. If the key is lost, you cannot ship an update to anyone who
+> already installed the app. If it leaks, someone else can sign builds that phones will
+> accept as yours. It is deliberately **not** in this repository; `.gitignore` blocks
+> `*.jks` and `*.keystore`.
+
+Then add four repository secrets under **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+|--------|-------|
+| `SIGNING_KEYSTORE_BASE64` | `base64 -i release.jks \| pbcopy` (macOS) or `base64 -w0 release.jks` (Linux) |
+| `SIGNING_STORE_PASSWORD` | Keystore password |
+| `SIGNING_KEY_ALIAS` | `radiochat` |
+| `SIGNING_KEY_PASSWORD` | Key password |
+
+The workflow fails with a clear message if any of the four is missing, rather than
+publishing an APK nobody can install. Local builds are unaffected: with no signing
+environment present, `assembleRelease` produces an unsigned APK exactly as before.
+
+---
+
 ## Performance notes
 
 The UI used to ANR when every IS/KISS packet reversed large lists and rebuilt map markers on the main thread. Current safeguards:

@@ -4,6 +4,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Release signing is driven by environment variables so the keystore never lives in the
+// repository. When they are absent (every normal local build) no signing config is created
+// and `assembleRelease` produces an unsigned APK, exactly as before.
+val signingStoreFile: String? = System.getenv("SIGNING_STORE_FILE")
+
 android {
     namespace = "com.aprs.radiochat"
     compileSdk = 35
@@ -12,8 +17,20 @@ android {
         applicationId = "com.aprs.radiochat"
         minSdk = 31
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        // Overridden by the release workflow from the git tag; see .github/workflows/release.yml
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 1
+        versionName = (project.findProperty("appVersionName") as String?) ?: "1.0.0"
+    }
+
+    signingConfigs {
+        if (signingStoreFile != null) {
+            create("release") {
+                storeFile = file(signingStoreFile)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -23,6 +40,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // null when the signing environment is not present -> unsigned local build
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 

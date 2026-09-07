@@ -1,0 +1,178 @@
+name: Release
+
+# Push a semver tag to cut a release:
+#   git tag -a v1.0.1 -m "RadioChat APRS 1.0.1" && git push origin v1.0.1
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, without the leading v (e.g. 1.0.1)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Resolve version from the tag
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          # Strip any pre-release suffix (1.2.3-beta1 -> 1.2.3) for the numeric code
+          CORE="${VERSION%%-*}"
+          if ! printf '%s' "$CORE" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Version '$VERSION' is not semver (expected MAJOR.MINOR.PATCH)."
+            exit 1
+          fi
+
+          IFS=. read -r MAJOR MINOR PATCH <<< "$CORE"
+
+          # Deterministic and monotonic: 1.0.0 -> 10000, 1.2.3 -> 10203
+          VERSION_CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
+
+          echo "version=$VERSION"           >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "Building $VERSION (versionCode $VERSION_CODE)"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # This launches the Gradle wrapper. The build itself runs on the JetBrains JDK 25
+      # required by gradle/gradle-daemon-jvm.properties, which Gradle provisions itself.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --console=plain
+
+      - name: Check signing secrets are present
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in KEYSTORE_B64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Repository secret for $name is not set."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Cannot publish an unsigned APK — users could not install or update it. See README (Releases) for how to create the keystore and add the four secrets."
+            exit 1
+          fi
+
+      - name: Decode keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          # Fail loudly rather than producing a mysteriously broken APK
+          if [ ! -s "$RUNNER_TEMP/release.jks" ]; then
+            echo "::error::Decoded keystore is empty. Re-create SIGNING_KEYSTORE_BASE64 with: base64 -i release.jks | pbcopy"
+            exit 1
+          fi
+
+      - name: Build signed release APK
+        env:
+          SIGNING_STORE_FILE: ${{ runner.temp }}/release.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease --console=plain \
+            -PappVersionName=${{ steps.version.outputs.version }} \
+            -PappVersionCode=${{ steps.version.outputs.version_code }}
+
+      - name: Verify the APK is actually signed
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/release/app-release.apk
+          if [ ! -f "$APK" ]; then
+            echo "::error::$APK not found — the build produced an unsigned artifact."
+            ls -R app/build/outputs/apk || true
+            exit 1
+          fi
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
+
+      - name: Stage artifacts
+        id: artifacts
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/radiochat-aprs-$VERSION.apk"
+          cd dist
+          sha256sum "radiochat-aprs-$VERSION.apk" > "radiochat-aprs-$VERSION.apk.sha256"
+          cat "radiochat-aprs-$VERSION.apk.sha256"
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          # Pull the section between "## [VERSION]" and the next "## " heading
+          if awk -v v="$VERSION" '
+                $0 ~ "^## \\[" v "\\]" { found = 1; next }
+                found && /^## / { exit }
+                found { print }
+              ' CHANGELOG.md > notes.md && [ -s notes.md ]; then
+            echo "Using CHANGELOG section for $VERSION"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No CHANGELOG section for $VERSION; falling back to generated notes"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          {
+            echo ""
+            echo "### Install"
+            echo ""
+            echo "Download \`radiochat-aprs-$VERSION.apk\` below and allow installing from an unknown source."
+            echo ""
+            echo "Verify the download before installing:"
+            echo ""
+            echo '```'
+            echo "sha256sum -c radiochat-aprs-$VERSION.apk.sha256"
+            echo '```'
+            echo ""
+            echo "Requires Android 12 (API 31) or newer, and a valid amateur radio licence to transmit."
+          } >> notes.md
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: RadioChat APRS ${{ steps.version.outputs.version }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', steps.version.outputs.version) || github.ref_name }}
+          body_path: notes.md
+          generate_release_notes: ${{ steps.notes.outputs.found == 'false' }}
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+          files: |
+            dist/radiochat-aprs-${{ steps.version.outputs.version }}.apk
+            dist/radiochat-aprs-${{ steps.version.outputs.version }}.apk.sha256

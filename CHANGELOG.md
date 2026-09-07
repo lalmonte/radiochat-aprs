@@ -12,6 +12,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - GPL-3.0-or-later licensing: `LICENSE`, per-file headers, and a name/logo reservation.
 - Project documentation for the public repository: `CONTRIBUTING.md`, `PRIVACY.md`,
   `CHANGELOG.md`, issue templates and `FUNDING.yml`.
+- Automated releases: pushing a semver tag runs the unit tests, builds a signed release
+  APK and publishes a GitHub Release with the APK and its SHA-256 checksum. `versionName`
+  and `versionCode` are derived from the tag, so they cannot drift from it.
 
 ### Changed
 
