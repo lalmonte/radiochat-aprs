@@ -7,35 +7,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
+Nothing yet.
 
-- GPL-3.0-or-later licensing: `LICENSE`, per-file headers, and a name/logo reservation.
-- Project documentation for the public repository: `CONTRIBUTING.md`, `PRIVACY.md`,
-  `CHANGELOG.md`, issue templates and `FUNDING.yml`.
-- Automated releases: pushing a semver tag runs the unit tests, builds a signed release
-  APK and publishes a GitHub Release with the APK and its SHA-256 checksum. `versionName`
-  and `versionCode` are derived from the tag, so they cannot drift from it.
+## [1.0.0] — 2026-09-07
 
-### Changed
-
-- The whole user interface is now in English. Screen titles, settings, chat, map, logs,
-  notifications, connection states and error messages were translated from Spanish.
-- Source comments and log messages translated to English.
-- **Renamed the application package from `com.aprs.radtel` to `com.aprs.radiochat`**, and
-  the classes that carried the radio manufacturer's brand (`AprsRadtelApp` →
-  `RadioChatApp`, `AprsRadtelAppNav` → `RadioChatAppNav`, `AprsRadtelTheme` →
-  `RadioChatTheme`, `Theme.AprsRadtel` → `Theme.RadioChat`). *Radtel* is a third party's
-  trademark and does not belong in this app's own identity; the app still supports the
-  RT-950 Pro exactly as before, and still says so.
-- The SharedPreferences store moved from `aprs_radtel` to `radiochat_aprs`.
-
-> **Upgrading from an earlier build:** the new application id makes this a separate app to
-> Android. It installs alongside the old one instead of replacing it, and settings and chat
-> history do not carry over. Uninstall the old build once you have set the new one up.
-
-## [1.0.0]
-
-First release.
+First public release.
 
 ### Added
 
@@ -52,6 +28,16 @@ First release.
 - **iGate** — RF → APRS-IS forwarding with anti-loop, dedupe and rate limiting.
 - **Notifications** — incoming messages, ACK/REJ and dropped links, per-channel.
 - SSID-aware throughout: `HI3LAG-7` is not `HI3LAG-3`.
+
+### Project
+
+- Released as free software under **GPL-3.0-or-later**. The app name and icon are reserved;
+  see the README.
+- The user interface, source comments and log messages are in English.
+- Application id `com.aprs.radiochat`. The package deliberately carries no third-party
+  trademark; the app supports the Radtel RT-950 Pro and says so in its documentation.
+- Signed release APKs are built automatically from a git tag, and published here with a
+  SHA-256 checksum you can verify before installing.
 
 [Unreleased]: ../../compare/v1.0.0...HEAD
 [1.0.0]: ../../releases/tag/v1.0.0

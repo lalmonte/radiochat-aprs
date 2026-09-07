@@ -140,6 +140,8 @@ jobs:
           if awk -v v="$VERSION" '
                 $0 ~ "^## \\[" v "\\]" { found = 1; next }
                 found && /^## / { exit }
+                # Skip link-reference definitions ("[1.0.0]: ../../...") at the file foot
+                found && /^\[[^]]+\]: / { next }
                 found { print }
               ' CHANGELOG.md > notes.md && [ -s notes.md ]; then
             echo "Using CHANGELOG section for $VERSION"
