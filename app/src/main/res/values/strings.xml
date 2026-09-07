@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RadioChat APRS</string>
+    <string name="about_developer">Luis Almonte (HI3LAG)</string>
+    <string name="about_qrz_url">https://www.qrz.com/db/HI3LAG</string>
+    <string name="tracking_notification_title">RadioChat · GPS on</string>
+    <string name="tracking_stop">Stop</string>
+    <string name="tracking_channel_name">GPS tracking</string>
+    <string name="tracking_channel_desc">Keeps GPS and the beacon running with the screen off or in the background</string>
+
+    <string name="notify_channel_messages">APRS messages</string>
+    <string name="notify_channel_messages_desc">Chat messages received over RF or the Internet</string>
+    <string name="notify_channel_ack">ACK confirmations</string>
+    <string name="notify_channel_ack_desc">Delivery or rejection of sent messages</string>
+    <string name="notify_channel_connection">Connections</string>
+    <string name="notify_channel_connection_desc">BLE, KISS TCP or APRS-IS link lost</string>
+    <string name="notify_messages_summary_title">APRS messages</string>
+    <string name="notify_messages_summary_body">Tap to open the chat</string>
+    <string name="notify_ack_delivered_title">Delivered · %1$s</string>
+    <string name="notify_ack_delivered_body">ACK for message %1$s</string>
+    <string name="notify_ack_rejected_title">Rejected · %1$s</string>
+    <string name="notify_ack_rejected_body">REJ for message %1$s</string>
+    <string name="notify_connection_lost_title">%1$s disconnected</string>
+</resources>

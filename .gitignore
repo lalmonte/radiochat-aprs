@@ -1,0 +1,18 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/app/build/
+/captures/
+*.apk
+*.ap_
+*.aab
+google-services.json
+
+# Signing material — never commit these
+*.jks
+*.keystore
+keystore.properties
+signing.properties

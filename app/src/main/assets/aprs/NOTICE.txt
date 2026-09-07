@@ -1,0 +1,14 @@
+APRS symbol graphics from https://github.com/hessu/aprs-symbols (aprs.fi / OH7LZB).
+
+These sheets are NOT under a single license. The upstream collection mixes:
+
+  - public domain artwork (OpenClipArt, Wikipedia),
+  - CC BY-SA 2.0 original designs,
+  - symbols of unknown provenance vectorised from the original APRS bitmap set,
+  - manufacturer logos whose trademarks belong to their respective owners.
+
+See COPYRIGHT.md in the upstream repository for the per-symbol detail, and check the
+terms yourself before redistributing these assets.
+
+The rest of RadioChat APRS is licensed under GPL-3.0-or-later; see the LICENSE file at
+the root of this repository.
