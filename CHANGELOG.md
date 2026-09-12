@@ -20,6 +20,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   asked: registering `HT_STATUS_CHANGED` is what also enables `DATA_RXD`, the event that
   carries received frames. Without it the link comes up and no packet ever arrives.
 
+- **Transmitting over Bluetooth, for radios that can.** Chat messages, ACKs and GPS
+  beacons now go out through the radio's BLE TNC when the connected model supports it.
+  The UV-PRO does; the RT-950 Pro is marked receive-only, because it accepts the write
+  and never keys up — claiming otherwise would report messages as sent that never
+  reached the air.
+- ACKs now reply over the same link the message arrived on whenever that link can
+  transmit, instead of falling back to the internet for a station that may not be there.
+
 ### Changed
 
 - The BLE layer was split into a GATT state machine that knows nothing about any radio

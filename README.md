@@ -27,8 +27,8 @@ License: **GPL-3.0-or-later** — see [License](#license)
 
 | Hardware | How it connects | Status |
 |----------|-----------------|--------|
-| **Radtel RT-950 Pro** | Bluetooth LE, KISS BLE mode (APRS menu on the radio) | Supported — RX confirmed; phone-initiated TX depends on your firmware |
-| **BTECH UV-PRO** | Bluetooth LE, Benshi protocol | Experimental — connects; packet flow being verified |
+| **Radtel RT-950 Pro** | Bluetooth LE, KISS BLE mode (APRS menu on the radio) | Receive only — its firmware does not key PTT from phone KISS |
+| **BTECH UV-PRO** | Bluetooth LE, Benshi protocol | Receive **and transmit** — RX confirmed on hardware, TX in testing |
 | **DireWolf** (PC/Raspberry Pi) | KISS over TCP (`KISSPORT`) | Supported |
 | **Any KISS TNC** reachable over TCP | KISS over TCP | Should work — reports welcome |
 | No radio at all | APRS-IS over the internet | Supported |
@@ -232,7 +232,16 @@ UI Send
   → ACK later sets DELIVERED / REJECTED
 ```
 
-TX path preference: **verified APRS-IS > KISS TCP**. BLE is used for RF receive; phone TX over the radio’s KISS BLE is firmware-dependent.
+TX path preference: **verified APRS-IS > KISS TCP > BLE**.
+
+Transmitting over Bluetooth depends on the radio, and the app will not pretend otherwise:
+the **UV-PRO transmits** frames handed to it over BLE, while the **RT-950 Pro accepts the
+write and never keys up**, so it is marked receive-only and transmissions are routed
+elsewhere rather than reporting a message as sent that never reached the air.
+
+ACKs are the exception to the ordering: they go back over **the same link the message
+arrived on** whenever that link can transmit. A station that called you on RF may not be
+on APRS-IS at all, and an ACK sent to the internet would never reach them.
 
 ---
 
