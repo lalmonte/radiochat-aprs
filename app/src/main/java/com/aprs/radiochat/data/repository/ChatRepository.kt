@@ -24,6 +24,7 @@ import com.aprs.radiochat.data.aprs.AprsPacketParser
 import com.aprs.radiochat.data.aprsis.AprsIsClient
 import com.aprs.radiochat.data.aprsis.OwnTransmissionLog
 import com.aprs.radiochat.data.aprsis.Tnc2Codec
+import com.aprs.radiochat.data.ble.BleUartManager
 import com.aprs.radiochat.data.kiss.KissFrameHub
 import com.aprs.radiochat.data.kiss.KissTransport
 import com.aprs.radiochat.data.model.AprsIsConnectionState
@@ -58,6 +59,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class ChatRepository(
     private val kissHub: KissFrameHub,
     private val tcpTnc: TcpKissTncClient,
+    private val ble: BleUartManager,
     private val aprsIs: AprsIsClient,
     private val ownTx: OwnTransmissionLog,
     private val parser: AprsPacketParser,
@@ -213,6 +215,7 @@ class ChatRepository(
         val ok = when (path) {
             TxPath.APRS_IS -> sendViaInternet(myCall, to, body, msgId)
             TxPath.KISS_TCP -> sendViaKissTcp(to, body, msgId)
+            TxPath.BLE -> sendViaBle(to, body, msgId)
         }
         if (!ok) return false
 
@@ -228,6 +231,7 @@ class ChatRepository(
                 source = when (path) {
                     TxPath.APRS_IS -> MessageSource.OUTGOING
                     TxPath.KISS_TCP -> MessageSource.OUTGOING_TCP
+                    TxPath.BLE -> MessageSource.OUTGOING_BLE
                 },
                 peer = to,
                 isRead = true,
@@ -250,11 +254,14 @@ class ChatRepository(
         if (tcpTnc.connectionState.value is TcpTncConnectionState.Connected) {
             return TxPath.KISS_TCP
         }
+        if (ble.canTransmit()) {
+            return TxPath.BLE
+        }
         _sendError.value = when {
             isState is AprsIsConnectionState.Connected && !isState.verified ->
                 "APRS-IS unverified; connect KISS TCP or check your passcode"
             else ->
-                "Connect APRS-IS or KISS TCP (DireWolf) to send"
+                "Connect APRS-IS, KISS TCP or a transmit-capable radio to send"
         }
         return null
     }
@@ -294,6 +301,21 @@ class ChatRepository(
             return false
         }
         Log.i(TAG, "TX KISS-TCP → $to: $body{$msgId")
+        return true
+    }
+
+    private fun sendViaBle(to: String, body: String, msgId: String): Boolean {
+        val ax25 = parser.buildOutgoingMessage(
+            toCallsign = to,
+            text = body,
+            messageId = msgId,
+            digipeaters = RF_DIGIS
+        )
+        if (!ble.sendAx25Payload(ax25)) {
+            _sendError.value = "Could not send over the radio"
+            return false
+        }
+        Log.i(TAG, "TX BLE → $to: $body{$msgId")
         return true
     }
 
@@ -450,6 +472,15 @@ class ChatRepository(
                 )
                 tcpTnc.sendAx25(ax25)
             }
+            TxPath.BLE -> {
+                val ax25 = parser.buildOutgoingMessage(
+                    toCallsign = to,
+                    text = "ack$messageId",
+                    messageId = null,
+                    digipeaters = RF_DIGIS
+                )
+                ble.sendAx25Payload(ax25)
+            }
         }
         if (ok) {
             Log.i(TAG, "ACK $path → $to ack$messageId (orig=$via)")
@@ -471,12 +502,18 @@ class ChatRepository(
         val isUp = aprsIs.connectionState.value
             .let { it is AprsIsConnectionState.Connected && it.verified }
         val tcpUp = tcpTnc.connectionState.value is TcpTncConnectionState.Connected
+        val bleUp = ble.canTransmit()
         val preferRf = via == MessageSource.RF_TCP || via == MessageSource.RF_BLE
         return when {
+            // Answer on the exact link it came in on whenever that link can transmit.
+            via == MessageSource.RF_BLE && bleUp -> TxPath.BLE
+            via == MessageSource.RF_TCP && tcpUp -> TxPath.KISS_TCP
             preferRf && tcpUp -> TxPath.KISS_TCP
+            preferRf && bleUp -> TxPath.BLE
             preferRf && isUp -> TxPath.APRS_IS
             isUp -> TxPath.APRS_IS
             tcpUp -> TxPath.KISS_TCP
+            bleUp -> TxPath.BLE
             else -> null
         }
     }
@@ -542,7 +579,7 @@ class ChatRepository(
         }
     }
 
-    private enum class TxPath { APRS_IS, KISS_TCP }
+    private enum class TxPath { APRS_IS, KISS_TCP, BLE }
 
     companion object {
         private const val TAG = "ChatRepository"

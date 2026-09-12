@@ -62,6 +62,13 @@ class RadtelProfileTest {
     }
 
     @Test
+    fun `is receive only over BLE`() {
+        // The RT-950 accepts the write and never keys up; claiming TX would make the app
+        // report messages as sent that never went on the air.
+        assertFalse(RadtelKissProfile.supportsTx)
+    }
+
+    @Test
     fun `encode emits exactly one plain KISS frame`() {
         val ax25 = byteArrayOf(0x01, 0x02, 0x03, 0xC0.toByte(), 0xDB.toByte())
         val units = RadtelKissProfile.newCodec().encode(ax25, maxWriteBytes = 20)
@@ -149,6 +156,11 @@ class BenshiProfileTest {
     fun `uses indications and never splits its own messages`() {
         assertTrue(BenshiProfile.usesIndications)
         assertFalse(BenshiProfile.chunkWritesToMtu)
+    }
+
+    @Test
+    fun `transmits over BLE`() {
+        assertTrue(BenshiProfile.supportsTx)
     }
 
     @Test

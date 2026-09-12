@@ -65,6 +65,9 @@ object BenshiProfile : BleRadioProfile {
     /** Message oriented: the codec sizes its own fragments, the manager must not split. */
     override val chunkWritesToMtu = false
 
+    /** The UV-PRO transmits frames handed to it over BLE, unlike the RT-950. */
+    override val supportsTx = true
+
     override fun newCodec(): RadioLinkCodec = BenshiLinkCodec()
 }
 

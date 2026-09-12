@@ -73,6 +73,13 @@ object RadtelKissProfile : BleRadioProfile {
     /** KISS is a byte stream: splitting it across GATT writes is safe and expected. */
     override val chunkWritesToMtu = true
 
+    /**
+     * Receive only. The RT-950's firmware does not reliably key PTT from phone-side KISS:
+     * writes are accepted on FF31 and nothing goes out on the air. Use DireWolf or
+     * APRS-IS to transmit.
+     */
+    override val supportsTx = false
+
     override fun newCodec(): RadioLinkCodec = KissLinkCodec()
 }
 

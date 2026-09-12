@@ -28,5 +28,7 @@ enum class MessageSource {
     /** Sent by this app over APRS-IS */
     OUTGOING,
     /** Sent by this app over KISS TCP (DireWolf) */
-    OUTGOING_TCP
+    OUTGOING_TCP,
+    /** Sent by this app over RF, through the radio's BLE TNC */
+    OUTGOING_BLE
 }

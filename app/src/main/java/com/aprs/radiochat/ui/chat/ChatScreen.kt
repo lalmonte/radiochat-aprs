@@ -520,6 +520,7 @@ private fun MessageBubble(message: ChatMessage) {
         MessageSource.INTERNET -> Icons.Filled.Cloud
         MessageSource.OUTGOING -> Icons.Filled.CellTower
         MessageSource.OUTGOING_TCP -> Icons.Filled.Dns
+        MessageSource.OUTGOING_BLE -> Icons.Filled.Radio
     }
     val sourceLabel = when (message.source) {
         MessageSource.RF_BLE -> "BLE"
@@ -527,6 +528,7 @@ private fun MessageBubble(message: ChatMessage) {
         MessageSource.INTERNET -> "IS"
         MessageSource.OUTGOING -> "IS"
         MessageSource.OUTGOING_TCP -> "TCP"
+        MessageSource.OUTGOING_BLE -> "BLE"
     }
 
     Box(modifier = Modifier.fillMaxWidth()) {

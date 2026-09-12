@@ -26,6 +26,7 @@ import com.aprs.radiochat.data.aprs.GeoUtils
 import com.aprs.radiochat.data.aprsis.AprsIsClient
 import com.aprs.radiochat.data.aprsis.OwnTransmissionLog
 import com.aprs.radiochat.data.aprsis.Tnc2Codec
+import com.aprs.radiochat.data.ble.BleUartManager
 import com.aprs.radiochat.data.location.BeaconTrackStore
 import com.aprs.radiochat.data.location.PhoneLocationFix
 import com.aprs.radiochat.data.location.PhoneLocationTracker
@@ -70,6 +71,7 @@ class BeaconService(
     private val aprsIs: AprsIsClient,
     private val ownTx: OwnTransmissionLog,
     private val tcpTnc: TcpKissTncClient,
+    private val ble: BleUartManager,
     private val myCallsign: () -> String
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -287,13 +289,24 @@ class BeaconService(
             sentTcp = tcpTnc.sendAx25(ax25)
         }
 
-        if (!sentIs && !sentTcp) {
+        var sentBle = false
+        if (ble.canTransmit()) {
+            val ax25 = Ax25Frame.buildUiFrame(
+                destination = "APRS",
+                source = call,
+                info = info.toByteArray(Charsets.ISO_8859_1),
+                digipeaters = listOf("WIDE1-1", "WIDE2-1")
+            )
+            sentBle = ble.sendAx25Payload(ax25)
+        }
+
+        if (!sentIs && !sentTcp && !sentBle) {
             val reconnecting = tcpState is TcpTncConnectionState.Connecting ||
                 isState is AprsIsConnectionState.Connecting
             _lastStatus.value = if (reconnecting) {
                 "Reconnecting link; beacon not sent"
             } else {
-                "No destination: connect APRS-IS or KISS TCP"
+                "No destination: connect APRS-IS, KISS TCP or a transmit-capable radio"
             }
             return false
         }
@@ -306,6 +319,7 @@ class BeaconService(
         val via = buildList {
             if (sentIs) add("IS")
             if (sentTcp) add("TCP")
+            if (sentBle) add("BLE")
         }.joinToString("+")
         _lastStatus.value = "TX $via · ${"%.4f".format(lat)}, ${"%.4f".format(lon)}"
         Log.i(TAG, "Beacon $via: $call>$info")

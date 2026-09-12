@@ -132,12 +132,14 @@ class RadioChatApp : Application() {
             aprsIs = aprsIsClient,
             ownTx = ownTransmissionLog,
             tcpTnc = tcpKissTncClient,
+            ble = bleUartManager,
             myCallsign = { settingsRepository.myCallsign.value }
         )
 
         chatRepository = ChatRepository(
             kissHub = kissFrameHub,
             tcpTnc = tcpKissTncClient,
+            ble = bleUartManager,
             aprsIs = aprsIsClient,
             ownTx = ownTransmissionLog,
             parser = parser,

@@ -250,7 +250,18 @@ private fun BleSection(
             ) {
                 RadioButton(selected = radioModel == model, onClick = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(model.displayName, style = MaterialTheme.typography.bodyLarge)
+                Column {
+                    Text(model.displayName, style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        if (model.profile.supportsTx) {
+                            "Receives and transmits over Bluetooth"
+                        } else {
+                            "Receives only — transmit needs DireWolf or APRS-IS"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }

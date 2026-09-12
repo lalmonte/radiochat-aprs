@@ -409,6 +409,15 @@ class BleUartManager(
         }
     }
 
+    /**
+     * Whether a frame handed over now would really go on the air: the selected radio
+     * supports BLE transmit and the link is up with a usable TX channel.
+     */
+    fun canTransmit(): Boolean =
+        profile.supportsTx &&
+            _connectionState.value is BleConnectionState.Connected &&
+            txChannels.isNotEmpty()
+
     fun clearTxError() {
         _lastTxError.value = null
     }

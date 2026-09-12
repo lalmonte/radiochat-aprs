@@ -65,6 +65,13 @@ interface BleRadioProfile {
      */
     val chunkWritesToMtu: Boolean
 
+    /**
+     * True when the radio will actually key up and transmit a frame handed to it over
+     * BLE. Receive-only radios must set this false: queuing a frame they silently drop
+     * makes the app report a message as sent when it never went on the air.
+     */
+    val supportsTx: Boolean
+
     /** A fresh codec. Called on every connect, so decoders never carry stale state. */
     fun newCodec(): RadioLinkCodec
 
