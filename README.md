@@ -28,7 +28,7 @@ License: **GPL-3.0-or-later** — see [License](#license)
 | Hardware | How it connects | Status |
 |----------|-----------------|--------|
 | **Radtel RT-950 Pro** | Bluetooth LE, KISS BLE mode (APRS menu on the radio) | Supported — RX confirmed; phone-initiated TX depends on your firmware |
-| **BTECH UV-PRO** | Bluetooth LE, Benshi protocol | **Experimental — not yet confirmed on hardware**, see below |
+| **BTECH UV-PRO** | Bluetooth LE, Benshi protocol | Experimental — connects; packet flow being verified |
 | **DireWolf** (PC/Raspberry Pi) | KISS over TCP (`KISSPORT`) | Supported |
 | **Any KISS TNC** reachable over TCP | KISS over TCP | Should work — reports welcome |
 | No radio at all | APRS-IS over the internet | Supported |
@@ -151,12 +151,24 @@ atomic, so one is never split across GATT writes.
 Protocol reference: [khusmann/benlink](https://github.com/khusmann/benlink), which
 reverse engineered these radios.
 
-> **Status:** the UUIDs above come straight from benlink and are solid. The three command
-> identifiers in `BenshiProtocol` have **not been confirmed against a physical UV-PRO**.
-> If the radio connects but no packets flow, those constants are the first place to look.
-> Framing, fragment assembly and the transport are covered by unit tests and are
-> independent of them. **Reports from UV-PRO owners are very welcome** — please open an
-> issue with a packet capture.
+The radio stays **silent until the app registers for events**. Registering
+`HT_STATUS_CHANGED` is what also switches on `DATA_RXD`, the event that carries received
+frames — a quirk documented by benlink. The app sends that registration as soon as the
+link is up; without it you get a healthy-looking connection and no packets at all.
+
+| Field | Value |
+|-------|-------|
+| Command group | `BASIC` = 2 |
+| Register for events | `REGISTER_NOTIFICATION` = 6, event `HT_STATUS_CHANGED` = 1 |
+| Received data | `EVENT_NOTIFICATION` = 9, event `DATA_RXD` = 2 |
+| Send data | `HT_SEND_DATA` = 31 |
+
+In a TNC data fragment the channel id is a **trailing** byte, not a header, which is easy
+to get backwards.
+
+> **Status:** UUIDs, command identifiers and framing all come from the benlink source.
+> Confirmed to connect on a real UV-PRO; **end-to-end packet flow is still being
+> verified**. Reports from UV-PRO owners are very welcome — please open an issue.
 
 BLE is **optional** (`bluetooth_le` is not required). The app works with DireWolf and/or APRS-IS alone.
 

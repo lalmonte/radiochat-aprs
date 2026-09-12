@@ -69,28 +69,29 @@ object BenshiProfile : BleRadioProfile {
 }
 
 /**
- * Wire constants for the Benshi protocol.
- *
- * The GATT UUIDs in [BenshiProfile] are taken directly from benlink's `link.py` and are
- * solid. The command identifiers below describe the shape benlink uses, but the exact
- * numbers have **not been confirmed against a physical UV-PRO by this project**. If the
- * radio connects but no packets flow, these three constants are the first place to look:
- * cross-check them against benlink's command module, or against a BLE capture ("Enable
- * Bluetooth HCI snoop log" in Android developer options).
- *
- * Everything else — framing, fragment assembly, the transport — is independent of these
- * values and is covered by unit tests.
+ * Wire constants for the Benshi protocol, taken from the
+ * [benlink](https://github.com/khusmann/benlink) reference implementation
+ * (`protocol/command/message.py`, `notification.py`, `common.py`).
  */
 internal object BenshiProtocol {
 
-    /** Command group that carries basic radio control and data. */
+    /** `CommandGroup.BASIC` — carries radio control and TNC data alike. */
     const val GROUP_BASIC = 2
 
-    /** Command used to hand a TNC data fragment to the radio (app → radio). */
-    const val CMD_SEND_TNC_DATA = 0x0050
+    /** `BasicCommand.REGISTER_NOTIFICATION` — subscribe to an event class. */
+    const val CMD_REGISTER_NOTIFICATION = 6
 
-    /** Event the radio raises when it has received a TNC data fragment (radio → app). */
-    const val CMD_TNC_DATA_RECEIVED = 0x0051
+    /** `BasicCommand.EVENT_NOTIFICATION` — how the radio pushes every event. */
+    const val CMD_EVENT_NOTIFICATION = 9
+
+    /** `BasicCommand.HT_SEND_DATA` — hand a TNC data fragment to the radio. */
+    const val CMD_HT_SEND_DATA = 31
+
+    /** `EventType.HT_STATUS_CHANGED`. */
+    const val EVENT_HT_STATUS_CHANGED = 1
+
+    /** `EventType.DATA_RXD` — a received APRS / BSS message. */
+    const val EVENT_DATA_RXD = 2
 
     /** Top bit of the command word marks a reply/event rather than a request. */
     const val REPLY_FLAG = 0x8000
@@ -109,11 +110,19 @@ internal object BenshiProtocol {
  *   ...  body
  * ```
  *
- * TNC data body:
+ * Received data is not its own command: the radio pushes everything as an
+ * `EVENT_NOTIFICATION` whose body starts with an event type, and an AX.25 frame arrives
+ * as `DATA_RXD`:
+ * ```
+ *   u8   event type          -- 2 = DATA_RXD
+ *   ...  TNC data fragment
+ * ```
+ *
+ * TNC data fragment — note the channel id is a **trailer**, not a header:
  * ```
  *   u8   is_final (bit 7) | with_channel_id (bit 6) | fragment_id (bits 5..0)
- *   u8   channel id        -- only when with_channel_id is set
  *   ...  fragment of the AX.25 frame
+ *   u8   channel id        -- only when with_channel_id is set
  * ```
  *
  * One BLE indication carries one complete message, so no cross-notification buffering
@@ -129,6 +138,18 @@ class BenshiLinkCodec : RadioLinkCodec {
         expectNextFragment = 0
     }
 
+    /**
+     * The radio stays silent until asked to report events. Registering for
+     * `HT_STATUS_CHANGED` is what also switches on `DATA_RXD`, which is the quirk
+     * benlink documents; without it the link comes up and no packet ever arrives.
+     */
+    override fun onLinkReady(maxWriteBytes: Int): List<ByteArray> = listOf(
+        message(
+            BenshiProtocol.CMD_REGISTER_NOTIFICATION,
+            byteArrayOf(BenshiProtocol.EVENT_HT_STATUS_CHANGED.toByte())
+        )
+    )
+
     override fun decode(chunk: ByteArray): List<ByteArray> {
         if (chunk.size < HEADER_BYTES) return emptyList()
 
@@ -137,22 +158,31 @@ class BenshiLinkCodec : RadioLinkCodec {
         val command = word and BenshiProtocol.REPLY_FLAG.inv() and 0xFFFF
 
         if (group != BenshiProtocol.GROUP_BASIC ||
-            command != BenshiProtocol.CMD_TNC_DATA_RECEIVED
+            command != BenshiProtocol.CMD_EVENT_NOTIFICATION
         ) {
-            // Status, battery, channel changes and the rest of the protocol: not ours.
+            Log.d(TAG, "Ignoring group=$group command=$command")
             return emptyList()
         }
 
         val body = chunk.copyOfRange(HEADER_BYTES, chunk.size)
-        if (body.isEmpty()) return emptyList()
+        // Event type, then the event itself.
+        if (body.size < 2) return emptyList()
+        val eventType = body[0].toInt() and 0xFF
+        if (eventType != BenshiProtocol.EVENT_DATA_RXD) {
+            Log.d(TAG, "Ignoring event type $eventType")
+            return emptyList()
+        }
 
-        val flags = body[0].toInt() and 0xFF
+        val flags = body[1].toInt() and 0xFF
         val isFinal = (flags and 0x80) != 0
         val withChannelId = (flags and 0x40) != 0
         val fragmentId = flags and 0x3F
 
-        val dataStart = if (withChannelId) 2 else 1
-        if (body.size < dataStart) return emptyList()
+        // Offsets are in `body`: [0] event type, [1] fragment flags, then the data,
+        // with the channel id as a single trailing byte when present.
+        val dataStart = 2
+        val dataEnd = if (withChannelId) body.size - 1 else body.size
+        if (dataEnd < dataStart) return emptyList()
 
         // A fragment out of sequence means we missed one; the frame would be corrupt.
         if (fragmentId != expectNextFragment) {
@@ -163,7 +193,7 @@ class BenshiLinkCodec : RadioLinkCodec {
             if (fragmentId != 0) return emptyList()
         }
 
-        body.copyOfRange(dataStart, body.size).forEach { assembling.add(it) }
+        body.copyOfRange(dataStart, dataEnd).forEach { assembling.add(it) }
 
         if (assembling.size > BenshiProtocol.MAX_REASSEMBLY_BYTES) {
             Log.w(TAG, "Reassembly buffer overflow; dropping frame")
@@ -200,7 +230,7 @@ class BenshiLinkCodec : RadioLinkCodec {
             body[0] = flags.toByte()
             ax25.copyInto(body, 1, offset, end)
 
-            out.add(message(BenshiProtocol.CMD_SEND_TNC_DATA, body))
+            out.add(message(BenshiProtocol.CMD_HT_SEND_DATA, body))
             offset = end
             fragmentId++
         }

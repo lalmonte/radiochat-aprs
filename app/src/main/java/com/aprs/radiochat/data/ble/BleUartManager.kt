@@ -243,6 +243,12 @@ class BleUartManager(
                 val name = g.device.name ?: profile.fallbackDeviceName
                 _connectionState.value = BleConnectionState.Connected(name, g.device.address)
                 startWriteLoop()
+                // Some radios report nothing until asked to; this is where they ask.
+                val handshake = codec.onLinkReady(maxWritePayload)
+                if (handshake.isNotEmpty()) {
+                    Log.i(TAG, "Link handshake: ${handshake.size} message(s)")
+                    handshake.forEach { outbound.trySend(it) }
+                }
                 Log.i(TAG, "Connected RX=FFE1 | TX=${txChannels.joinToString { it.label }}")
             } else {
                 _connectionState.value =

@@ -14,9 +14,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **BTECH UV-PRO support (experimental).** The UV-PRO and its siblings (Vero VR-N76,
   RadioOddity GA-5WB) do not speak KISS over BLE; they use the Benshi protocol, where
   AX.25 frames travel as fragmented "TNC data" messages over an *indication*
-  characteristic. The GATT UUIDs come from [benlink](https://github.com/khusmann/benlink);
-  the command identifiers still need confirming against real hardware, so the radio is
-  listed as experimental. Testers welcome.
+  characteristic. UUIDs, command identifiers and framing all follow the
+  [benlink](https://github.com/khusmann/benlink) reference.
+- The app now registers for radio events on connect. These radios report nothing until
+  asked: registering `HT_STATUS_CHANGED` is what also enables `DATA_RXD`, the event that
+  carries received frames. Without it the link comes up and no packet ever arrives.
 
 ### Changed
 

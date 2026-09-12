@@ -103,6 +103,22 @@ class RadtelProfileTest {
  */
 class BenshiProfileTest {
 
+    /**
+     * Rewrites an outgoing HT_SEND_DATA unit into the DATA_RXD event the radio actually
+     * pushes: same fragment, but wrapped as an event notification.
+     */
+    private fun asInboundEvent(outgoingUnit: ByteArray): ByteArray {
+        val fragment = outgoingUnit.copyOfRange(4, outgoingUnit.size)
+        val msg = ByteArray(4 + 1 + fragment.size)
+        msg[0] = 0
+        msg[1] = BenshiProtocol.GROUP_BASIC.toByte()
+        msg[2] = ((BenshiProtocol.CMD_EVENT_NOTIFICATION ushr 8) and 0xFF).toByte()
+        msg[3] = (BenshiProtocol.CMD_EVENT_NOTIFICATION and 0xFF).toByte()
+        msg[4] = BenshiProtocol.EVENT_DATA_RXD.toByte()
+        fragment.copyInto(msg, 5)
+        return msg
+    }
+
     @Test
     fun `gatt attributes match the benlink reference`() {
         assertEquals(
@@ -120,9 +136,39 @@ class BenshiProfileTest {
     }
 
     @Test
+    fun `protocol constants match benlink`() {
+        assertEquals(2, BenshiProtocol.GROUP_BASIC)
+        assertEquals(6, BenshiProtocol.CMD_REGISTER_NOTIFICATION)
+        assertEquals(9, BenshiProtocol.CMD_EVENT_NOTIFICATION)
+        assertEquals(31, BenshiProtocol.CMD_HT_SEND_DATA)
+        assertEquals(1, BenshiProtocol.EVENT_HT_STATUS_CHANGED)
+        assertEquals(2, BenshiProtocol.EVENT_DATA_RXD)
+    }
+
+    @Test
     fun `uses indications and never splits its own messages`() {
         assertTrue(BenshiProfile.usesIndications)
         assertFalse(BenshiProfile.chunkWritesToMtu)
+    }
+
+    @Test
+    fun `registers for events on connect, or the radio stays silent`() {
+        val handshake = BenshiProfile.newCodec().onLinkReady(100)
+        assertEquals(1, handshake.size)
+
+        val msg = handshake.single()
+        assertEquals(BenshiProtocol.GROUP_BASIC, ((msg[0].toInt() and 0xFF) shl 8) or (msg[1].toInt() and 0xFF))
+        assertEquals(
+            BenshiProtocol.CMD_REGISTER_NOTIFICATION,
+            ((msg[2].toInt() and 0xFF) shl 8) or (msg[3].toInt() and 0xFF)
+        )
+        // Registering HT_STATUS_CHANGED is what also switches DATA_RXD on.
+        assertEquals(BenshiProtocol.EVENT_HT_STATUS_CHANGED, msg[4].toInt() and 0xFF)
+    }
+
+    @Test
+    fun `radtel sends no handshake`() {
+        assertTrue(RadtelKissProfile.newCodec().onLinkReady(100).isEmpty())
     }
 
     @Test
@@ -131,6 +177,10 @@ class BenshiProfileTest {
         val units = BenshiProfile.newCodec().encode(ax25, maxWriteBytes = 100)
 
         assertEquals(1, units.size)
+        assertEquals(
+            BenshiProtocol.CMD_HT_SEND_DATA,
+            ((units[0][2].toInt() and 0xFF) shl 8) or (units[0][3].toInt() and 0xFF)
+        )
         val flags = units.first()[4].toInt() and 0xFF
         assertTrue("final bit must be set", (flags and 0x80) != 0)
         assertEquals("fragment id", 0, flags and 0x3F)
@@ -154,26 +204,46 @@ class BenshiProfileTest {
         val ax25 = ByteArray(300) { (it and 0xFF).toByte() }
         val units = BenshiProfile.newCodec().encode(ax25, maxWriteBytes = 60)
 
-        // Same command group, flipped to the radio-to-app command, as the radio sends it
-        val inbound = units.map { unit ->
-            unit.copyOf().also {
-                it[2] = ((BenshiProtocol.CMD_TNC_DATA_RECEIVED ushr 8) and 0xFF).toByte()
-                it[3] = (BenshiProtocol.CMD_TNC_DATA_RECEIVED and 0xFF).toByte()
-            }
-        }
-
         val codec = BenshiProfile.newCodec()
-        val out = inbound.flatMap { codec.decode(it) }
+        val out = units.map { asInboundEvent(it) }.flatMap { codec.decode(it) }
 
         assertEquals(1, out.size)
         assertArrayEquals(ax25, out.first())
     }
 
     @Test
-    fun `unrelated messages are ignored`() {
+    fun `channel id is a trailer, not a header`() {
+        val payload = byteArrayOf(0x11, 0x22, 0x33)
+        // final | with_channel_id | fragment 0, then data, then the channel id byte
+        val msg = byteArrayOf(
+            0x00, BenshiProtocol.GROUP_BASIC.toByte(),
+            0x00, BenshiProtocol.CMD_EVENT_NOTIFICATION.toByte(),
+            BenshiProtocol.EVENT_DATA_RXD.toByte(),
+            (0x80 or 0x40).toByte(),
+            0x11, 0x22, 0x33,
+            0x07
+        )
+        val out = BenshiProfile.newCodec().decode(msg)
+        assertEquals(1, out.size)
+        assertArrayEquals(payload, out.first())
+    }
+
+    @Test
+    fun `non-data events are ignored`() {
         val codec = BenshiProfile.newCodec()
-        // Same group, some other command: battery, channel, whatever it may be
-        val other = byteArrayOf(0x00, 0x02, 0x00, 0x09, 0x11, 0x22)
+        val statusEvent = byteArrayOf(
+            0x00, BenshiProtocol.GROUP_BASIC.toByte(),
+            0x00, BenshiProtocol.CMD_EVENT_NOTIFICATION.toByte(),
+            BenshiProtocol.EVENT_HT_STATUS_CHANGED.toByte(),
+            0x11, 0x22
+        )
+        assertTrue(codec.decode(statusEvent).isEmpty())
+    }
+
+    @Test
+    fun `unrelated commands are ignored`() {
+        val codec = BenshiProfile.newCodec()
+        val other = byteArrayOf(0x00, 0x02, 0x00, 0x14, 0x11, 0x22)
         assertTrue(codec.decode(other).isEmpty())
     }
 
@@ -181,15 +251,9 @@ class BenshiProfileTest {
     fun `a dropped fragment does not emit a corrupt frame`() {
         val ax25 = ByteArray(300) { (it and 0xFF).toByte() }
         val units = BenshiProfile.newCodec().encode(ax25, maxWriteBytes = 60)
-            .map { unit ->
-                unit.copyOf().also {
-                    it[2] = ((BenshiProtocol.CMD_TNC_DATA_RECEIVED ushr 8) and 0xFF).toByte()
-                    it[3] = (BenshiProtocol.CMD_TNC_DATA_RECEIVED and 0xFF).toByte()
-                }
-            }
+            .map { asInboundEvent(it) }
 
         val codec = BenshiProfile.newCodec()
-        // Feed everything except the second fragment
         val out = units.filterIndexed { i, _ -> i != 1 }.flatMap { codec.decode(it) }
 
         assertTrue("a frame with a hole must never be emitted", out.isEmpty())

@@ -87,6 +87,15 @@ interface RadioLinkCodec {
     fun reset()
 
     /**
+     * Messages to send once notifications are subscribed and the link is usable.
+     *
+     * Some radios stay silent until told which events to report, so this is where a
+     * protocol performs its handshake. Returning an empty list — the default — means the
+     * radio starts talking on its own, as the Radtel does.
+     */
+    fun onLinkReady(maxWriteBytes: Int): List<ByteArray> = emptyList()
+
+    /**
      * Feeds bytes arriving on the notify characteristic.
      * @return zero or more complete AX.25 payloads, KISS/transport framing removed.
      */
