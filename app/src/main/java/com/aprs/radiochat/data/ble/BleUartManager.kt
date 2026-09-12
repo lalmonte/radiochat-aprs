@@ -35,7 +35,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.aprs.radiochat.data.kiss.KissCodec
 import com.aprs.radiochat.data.model.BleConnectionState
 import com.aprs.radiochat.data.model.BleDeviceInfo
 import kotlinx.coroutines.CompletableDeferred
@@ -61,10 +60,22 @@ import java.util.UUID
 import kotlin.coroutines.resume
 
 /**
- * BLE KISS RT-950 Pro — RX notify FFE1, TX write FF31 (KISS BLE).
+ * GATT state machine for a BLE TNC.
+ *
+ * It owns scanning, connection, MTU, notifications and the write queue, and knows
+ * nothing about any particular radio: which attributes to look for and how frames are
+ * framed comes from the [BleRadioProfile] selected in settings. Adding a model is a new
+ * profile, never a change here.
+ *
+ * The profile is resolved when a scan or a connection starts and then held for the
+ * lifetime of that connection, so changing the setting mid-session cannot leave the
+ * codec and the radio disagreeing.
  */
 @SuppressLint("MissingPermission")
-class BleUartManager(context: Context) {
+class BleUartManager(
+    context: Context,
+    private val selectedModel: () -> RadioModel = { RadioModel.DEFAULT }
+) {
 
     private data class TxChannel(
         val characteristic: BluetoothGattCharacteristic,
@@ -93,9 +104,22 @@ class BleUartManager(context: Context) {
     private val _kissPayloads = MutableSharedFlow<ByteArray>(extraBufferCapacity = 64)
     val kissPayloads: SharedFlow<ByteArray> = _kissPayloads.asSharedFlow()
 
-    private val kissDecoder = KissCodec.Decoder()
+    /** Radio in use for the current scan/connection, and its codec. */
+    @Volatile private var profile: BleRadioProfile = RadioModel.DEFAULT.profile
+    @Volatile private var codec: RadioLinkCodec = profile.newCodec()
+
     private val gattMutex = Mutex()
     private val outbound = Channel<ByteArray>(Channel.UNLIMITED)
+
+    /** Latches the selected radio for the session about to start. */
+    private fun adoptSelectedProfile() {
+        val next = selectedModel().profile
+        if (next !== profile) {
+            Log.i(TAG, "Radio profile: ${next.model.displayName}")
+        }
+        profile = next
+        codec = next.newCodec()
+    }
 
     private var gatt: BluetoothGatt? = null
     private var txChannels = listOf<TxChannel>()
@@ -125,17 +149,17 @@ class BleUartManager(context: Context) {
 
     private fun maybeOfferDevice(result: ScanResult) {
         val name = result.device.name ?: result.scanRecord?.deviceName ?: ""
-        val hasKissService = result.scanRecord?.serviceUuids
-            ?.any { it.uuid == BleUartProfile.SERVICE_UUID } == true
+        val hasRadioService = result.scanRecord?.serviceUuids
+            ?.any { it.uuid == profile.serviceUuid } == true
         val nameMatches = name.isNotBlank() &&
-            BleUartProfile.DEVICE_NAME_HINTS.any { name.contains(it, ignoreCase = true) }
-        if (!nameMatches && !hasKissService) return
+            profile.deviceNameHints.any { name.contains(it, ignoreCase = true) }
+        if (!nameMatches && !hasRadioService) return
 
         val address = result.device.address
         knownDevices[address] = result.device
         _discoveredDevices.update { current ->
             (current.filterNot { it.address == address } +
-                BleDeviceInfo(name.ifBlank { "RT-950 Pro" }, address, result.rssi))
+                BleDeviceInfo(name.ifBlank { profile.fallbackDeviceName }, address, result.rssi))
                 .sortedByDescending { it.rssi }
         }
     }
@@ -188,9 +212,11 @@ class BleUartManager(context: Context) {
                 return
             }
 
-            val notifyChar = findCharacteristic(g, BleUartProfile.NOTIFY_CHAR_UUID)
+            val notifyChar = findCharacteristic(g, profile.notifyCharUuid)
             if (notifyChar == null) {
-                _connectionState.value = BleConnectionState.Error("FFE1 (notify) not found")
+                _connectionState.value = BleConnectionState.Error(
+                    "RX characteristic not found — is this a ${profile.model.shortName}?"
+                )
                 logServices(g)
                 return
             }
@@ -212,9 +238,9 @@ class BleUartManager(context: Context) {
             status: Int
         ) {
             if (status == BluetoothGatt.GATT_SUCCESS &&
-                descriptor.uuid == BleUartProfile.CCCD_UUID
+                descriptor.uuid == BleRadioProfile.CCCD_UUID
             ) {
-                val name = g.device.name ?: "RT-950 Pro"
+                val name = g.device.name ?: profile.fallbackDeviceName
                 _connectionState.value = BleConnectionState.Connected(name, g.device.address)
                 startWriteLoop()
                 Log.i(TAG, "Connected RX=FFE1 | TX=${txChannels.joinToString { it.label }}")
@@ -229,7 +255,7 @@ class BleUartManager(context: Context) {
             g: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
-            if (characteristic.uuid == BleUartProfile.NOTIFY_CHAR_UUID) {
+            if (characteristic.uuid == profile.notifyCharUuid) {
                 @Suppress("DEPRECATION")
                 handleIncoming(characteristic.value ?: return)
             }
@@ -240,7 +266,7 @@ class BleUartManager(context: Context) {
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray
         ) {
-            if (characteristic.uuid == BleUartProfile.NOTIFY_CHAR_UUID) {
+            if (characteristic.uuid == profile.notifyCharUuid) {
                 handleIncoming(value)
             }
         }
@@ -254,17 +280,22 @@ class BleUartManager(context: Context) {
         }
     }
 
-    /** BLE KISS mode: FF31 only (FFE1 is notify + CPS, it does not key RF TX in KISS). */
+    /**
+     * First writable candidate in the profile's order of preference.
+     *
+     * For the Radtel that is FF31, the real KISS TX channel, with FFE2/FFE1 as
+     * firmware fallbacks — the same outcome as before, since only the first channel was
+     * ever used for transmission.
+     */
     private fun buildTxChannels(g: BluetoothGatt): List<TxChannel> {
-        val ff31 = findWritable(g, BleUartProfile.WRITE_CHAR_UUID)
-        if (ff31 != null) {
-            return listOf(makeTxChannel(ff31, "FF31"))
+        for (candidate in profile.writeCharUuids) {
+            val characteristic = findWritable(g, candidate.uuid) ?: continue
+            if (candidate !== profile.writeCharUuids.first()) {
+                Log.w(TAG, "Preferred TX channel unavailable; using ${candidate.label}")
+            }
+            return listOf(makeTxChannel(characteristic, candidate.label))
         }
-        Log.w(TAG, "FF31 unavailable; trying FFE2/FFE1 as a fallback")
-        return listOfNotNull(
-            findWritable(g, BleUartProfile.WRITE_CHAR_ALT_UUID)?.let { makeTxChannel(it, "FFE2") },
-            findWritable(g, BleUartProfile.NOTIFY_CHAR_UUID)?.let { makeTxChannel(it, "FFE1") }
-        )
+        return emptyList()
     }
 
     private fun makeTxChannel(c: BluetoothGattCharacteristic, label: String): TxChannel {
@@ -315,6 +346,8 @@ class BleUartManager(context: Context) {
         }
         stopScan()
         disconnect()
+        // Pick up the radio chosen in settings before filtering scan results by it.
+        adoptSelectedProfile()
         knownDevices.clear()
         _discoveredDevices.value = emptyList()
         _connectionState.value = BleConnectionState.Scanning
@@ -330,7 +363,7 @@ class BleUartManager(context: Context) {
             if (_connectionState.value is BleConnectionState.Scanning) {
                 stopScan()
                 _connectionState.value = if (_discoveredDevices.value.isEmpty()) {
-                    BleConnectionState.Error("RT-950 Pro not found")
+                    BleConnectionState.Error("${profile.model.shortName} not found")
                 } else {
                     BleConnectionState.Idle
                 }
@@ -354,7 +387,7 @@ class BleUartManager(context: Context) {
 
     fun connect(device: BluetoothDevice) {
         stopScan()
-        kissDecoder.reset()
+        adoptSelectedProfile()
         _connectionState.value = BleConnectionState.Connecting(device.name ?: device.address)
         gatt = device.connectGatt(appContext, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
     }
@@ -389,21 +422,28 @@ class BleUartManager(context: Context) {
             _lastTxError.value = "TX channel not ready"
             return false
         }
-        // A single KISS data frame (cmd 0x00). TXDELAY is not reliably implemented
-        // in the RT-950's internal TNC.
-        val kiss = KissCodec.encode(payload)
-        val label = txChannels.first().label
-        Log.i(TAG, "TX KISS ${kiss.size}B → $label: ${kiss.toHex()}")
-        _lastTxError.value = null
-        if (outbound.trySend(kiss).isFailure) {
-            _lastTxError.value = "TX queue full"
+        val units = codec.encode(payload, maxWritePayload)
+        if (units.isEmpty()) {
+            _lastTxError.value = "Nothing to transmit"
             return false
+        }
+        val label = txChannels.first().label
+        Log.i(
+            TAG,
+            "TX ${profile.model.shortName} ${payload.size}B as ${units.size} unit(s) → $label"
+        )
+        _lastTxError.value = null
+        for (unit in units) {
+            if (outbound.trySend(unit).isFailure) {
+                _lastTxError.value = "TX queue full"
+                return false
+            }
         }
         return true
     }
 
     private fun handleIncoming(chunk: ByteArray) {
-        kissDecoder.feed(chunk).forEach { payload ->
+        codec.decode(chunk).forEach { payload ->
             if (payload.isNotEmpty()) {
                 _kissPayloads.tryEmit(payload)
             }
@@ -412,11 +452,17 @@ class BleUartManager(context: Context) {
 
     private fun enableNotifications(g: BluetoothGatt, notifyChar: BluetoothGattCharacteristic) {
         g.setCharacteristicNotification(notifyChar, true)
-        val cccd = notifyChar.getDescriptor(BleUartProfile.CCCD_UUID) ?: run {
+        val cccd = notifyChar.getDescriptor(BleRadioProfile.CCCD_UUID) ?: run {
             _connectionState.value = BleConnectionState.Error("CCCD missing")
             return
         }
-        val value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+        // Writing the notification value to an indicate-only characteristic subscribes
+        // to nothing: the link looks up but not a single packet ever arrives.
+        val value = if (profile.usesIndications) {
+            BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+        } else {
+            BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             g.writeDescriptor(cccd, value)
         } else {
@@ -443,7 +489,7 @@ class BleUartManager(context: Context) {
         }
     }
 
-    /** Writes the KISS frame on FF31 (the only channel in BLE KISS mode). */
+    /** Writes one encoded unit on the selected TX characteristic. */
     private suspend fun transmitKissStream(stream: ByteArray): Boolean {
         val channel = txChannels.firstOrNull() ?: return false
         Log.i(TAG, "TX over ${channel.label} (${stream.size}B)…")
@@ -454,6 +500,17 @@ class BleUartManager(context: Context) {
 
     private suspend fun writeStreamToChannel(stream: ByteArray, channel: TxChannel): Boolean {
         val g = gatt ?: return false
+
+        // Message-oriented protocols size their own units; splitting one would corrupt
+        // it. Byte streams such as KISS are split to fit the MTU, as they always were.
+        if (!profile.chunkWritesToMtu) {
+            if (stream.size > maxWritePayload) {
+                Log.e(TAG, "Unit of ${stream.size}B exceeds MTU payload $maxWritePayload")
+                return false
+            }
+            return writeOnMainThread(g, channel, stream)
+        }
+
         val chunkSize = maxWritePayload
         var offset = 0
         while (offset < stream.size) {
@@ -515,7 +572,7 @@ class BleUartManager(context: Context) {
         txChannels = emptyList()
         maxWritePayload = 20
         mtuReady = false
-        kissDecoder.reset()
+        codec.reset()
         writeAck?.complete(false)
         writeAck = null
     }

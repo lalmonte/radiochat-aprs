@@ -7,7 +7,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Radio selection for the Bluetooth TNC.** More → Links & network → Bluetooth now has a
+  radio picker, and scanning filters for the model you chose.
+- **BTECH UV-PRO support (experimental).** The UV-PRO and its siblings (Vero VR-N76,
+  RadioOddity GA-5WB) do not speak KISS over BLE; they use the Benshi protocol, where
+  AX.25 frames travel as fragmented "TNC data" messages over an *indication*
+  characteristic. The GATT UUIDs come from [benlink](https://github.com/khusmann/benlink);
+  the command identifiers still need confirming against real hardware, so the radio is
+  listed as experimental. Testers welcome.
+
+### Changed
+
+- The BLE layer was split into a GATT state machine that knows nothing about any radio
+  and a per-radio `BleRadioProfile` holding the attributes and the framing. Adding a model
+  is now a new profile rather than a change to shared code.
+- **The Radtel RT-950 Pro path is unchanged**: same UUIDs, same FF31 preference, same KISS
+  framing, same MTU chunking. Unit tests now pin those down so a future radio cannot
+  silently alter them.
+- Switching radios drops any live BLE link, since the two protocols are not interchangeable.
+- Unit tests return default values for unmocked Android stubs, so a stray `Log` call in
+  code under test no longer fails an otherwise valid test.
 
 ## [1.0.0] — 2026-09-07
 

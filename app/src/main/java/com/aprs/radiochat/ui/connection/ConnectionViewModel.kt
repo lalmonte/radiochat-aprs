@@ -25,6 +25,7 @@ import com.aprs.radiochat.data.aprsis.AprsIsClient
 import com.aprs.radiochat.data.aprsis.IGateService
 import com.aprs.radiochat.data.beacon.BeaconService
 import com.aprs.radiochat.data.ble.BleUartManager
+import com.aprs.radiochat.data.ble.RadioModel
 import com.aprs.radiochat.data.location.PhoneLocationFix
 import com.aprs.radiochat.data.location.PhoneLocationTracker
 import com.aprs.radiochat.data.model.AprsIsConnectionState
@@ -54,6 +55,10 @@ class ConnectionViewModel(
 
     val discoveredDevices: StateFlow<List<BleDeviceInfo>> = ble.discoveredDevices
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Radio the BLE TNC is set up for. Changing it only affects the next connection. */
+    val radioModel: StateFlow<RadioModel> = settings.radioModel
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), RadioModel.DEFAULT)
 
     val tcpTncState: StateFlow<TcpTncConnectionState> = tcpTnc.connectionState
         .stateIn(
@@ -190,6 +195,16 @@ class ConnectionViewModel(
 
     val notifyBulletins: StateFlow<Boolean> = settings.notifyBulletins
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /**
+     * Switching radios drops any current link: the two speak different protocols, so
+     * carrying a live connection across the change could only produce garbage.
+     */
+    fun setRadioModel(model: RadioModel) {
+        if (settings.radioModel.value == model) return
+        ble.disconnect()
+        settings.setRadioModel(model)
+    }
 
     fun startScan() = ble.startScan()
     fun disconnectBle() = ble.disconnect()

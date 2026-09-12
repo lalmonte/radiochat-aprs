@@ -58,6 +58,14 @@ android {
         compose = true
         buildConfig = true
     }
+
+    testOptions {
+        unitTests {
+            // Android stubs throw by default, so a single android.util.Log call in the
+            // code under test fails an otherwise valid JVM test. Return defaults instead.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {

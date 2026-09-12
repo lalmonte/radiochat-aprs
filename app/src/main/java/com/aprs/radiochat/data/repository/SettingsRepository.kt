@@ -24,6 +24,7 @@ import com.aprs.radiochat.data.aprs.AprsMessageCodec
 import com.aprs.radiochat.data.aprsis.AprsIsClient
 import com.aprs.radiochat.data.aprsis.AprsIsFilter
 import com.aprs.radiochat.data.aprsis.AprsIsPasscode
+import com.aprs.radiochat.data.ble.RadioModel
 import com.aprs.radiochat.data.model.OwnPosition
 import com.aprs.radiochat.data.tnc.TcpKissTncClient
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +56,12 @@ class SettingsRepository(context: Context) {
         prefs.getInt(KEY_RANGE_KM, DEFAULT_RANGE_KM).coerceIn(1, 20_000)
     )
     val rangeKm: StateFlow<Int> = _rangeKm.asStateFlow()
+
+    /** Which radio the BLE TNC talks to. */
+    private val _radioModel = MutableStateFlow(
+        RadioModel.fromId(prefs.getString(KEY_RADIO_MODEL, RadioModel.DEFAULT.id))
+    )
+    val radioModel: StateFlow<RadioModel> = _radioModel.asStateFlow()
 
     private val _tcpTncHost = MutableStateFlow(
         prefs.getString(KEY_TCP_HOST, TcpKissTncClient.DEFAULT_HOST)
@@ -147,6 +154,12 @@ class SettingsRepository(context: Context) {
         val value = km.coerceIn(1, 20_000)
         prefs.edit().putInt(KEY_RANGE_KM, value).apply()
         _rangeKm.value = value
+    }
+
+    fun setRadioModel(model: RadioModel) {
+        if (_radioModel.value == model) return
+        prefs.edit().putString(KEY_RADIO_MODEL, model.id).apply()
+        _radioModel.value = model
     }
 
     fun setTcpTncHost(host: String) {
@@ -328,6 +341,7 @@ class SettingsRepository(context: Context) {
         private const val KEY_PASSCODE = "aprs_is_passcode"
         private const val KEY_PASS_CUSTOM = "aprs_is_passcode_custom"
         private const val KEY_RANGE_KM = "aprs_is_range_km"
+        private const val KEY_RADIO_MODEL = "ble_radio_model"
         private const val KEY_TCP_HOST = "tcp_tnc_host"
         private const val KEY_TCP_PORT = "tcp_tnc_port"
         private const val KEY_BEACON_ON = "beacon_enabled"

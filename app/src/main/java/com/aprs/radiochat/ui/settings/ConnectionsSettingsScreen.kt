@@ -25,6 +25,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -32,6 +35,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,9 +46,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aprs.radiochat.data.ble.RadioModel
 import com.aprs.radiochat.data.model.AprsIsConnectionState
 import com.aprs.radiochat.data.model.BleConnectionState
 import com.aprs.radiochat.data.model.TcpTncConnectionState
@@ -73,6 +79,7 @@ fun ConnectionsSettingsScreen(
     val tcpState by viewModel.tcpTncState.collectAsStateWithLifecycle()
     val tcpActivity by viewModel.tcpTncActivity.collectAsStateWithLifecycle()
     val ownPosition by viewModel.ownPosition.collectAsStateWithLifecycle()
+    val radioModel by viewModel.radioModel.collectAsStateWithLifecycle()
     val computed = viewModel.computedPasscode()
 
     var rfTab by rememberSaveable { mutableIntStateOf(0) }
@@ -81,7 +88,7 @@ fun ConnectionsSettingsScreen(
         SettingsScrollColumn(padding) {
             SectionCard(title = "Radio (RF)") {
                 Text(
-                    "Receives traffic over Bluetooth (RT-950) or KISS TCP (DireWolf). You can use both.",
+                    "Receives traffic over Bluetooth (handheld radio) or KISS TCP (DireWolf). You can use both.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -100,6 +107,8 @@ fun ConnectionsSettingsScreen(
                     0 -> BleSection(
                         state = bleState,
                         devices = devices,
+                        radioModel = radioModel,
+                        onRadioModelChange = viewModel::setRadioModel,
                         onScan = viewModel::startScan,
                         onDisconnect = viewModel::disconnectBle,
                         onConnect = viewModel::connect
@@ -214,10 +223,38 @@ fun ConnectionsSettingsScreen(
 private fun BleSection(
     state: BleConnectionState,
     devices: List<com.aprs.radiochat.data.model.BleDeviceInfo>,
+    radioModel: RadioModel,
+    onRadioModelChange: (RadioModel) -> Unit,
     onScan: () -> Unit,
     onDisconnect: () -> Unit,
     onConnect: (String) -> Unit
 ) {
+    Text("Radio model", style = MaterialTheme.typography.labelLarge)
+    Text(
+        "Each radio speaks a different protocol over Bluetooth, so pick yours before scanning.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Column(Modifier.selectableGroup()) {
+        RadioModel.entries.forEach { model ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = radioModel == model,
+                        onClick = { onRadioModelChange(model) },
+                        role = Role.RadioButton
+                    )
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                RadioButton(selected = radioModel == model, onClick = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(model.displayName, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(4.dp))
     StatusLine("BLE status", bleLabel(state))
     Button(
         onClick = onScan,
@@ -225,7 +262,7 @@ private fun BleSection(
             state !is BleConnectionState.Connecting &&
             state !is BleConnectionState.Connected,
         modifier = Modifier.fillMaxWidth()
-    ) { Text("Scan for RT-950 Pro") }
+    ) { Text("Scan for ${radioModel.shortName}") }
     OutlinedButton(
         onClick = onDisconnect,
         enabled = state is BleConnectionState.Connected ||

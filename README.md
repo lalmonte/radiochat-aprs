@@ -1,11 +1,14 @@
 # RadioChat APRS
 
-**A free, open-source APRS client for Android that turns a [Radtel RT-950 Pro](#1-ble-kiss-radtel-rt-950-pro)
-into a full APRS station over Bluetooth — no TNC cable, no extra hardware.**
+**A free, open-source APRS client for Android that turns a
+[Radtel RT-950 Pro](#radtel-rt-950-pro--plain-kiss) into a full APRS station over
+Bluetooth — no TNC cable, no extra hardware.**
 
 It connects to the RT-950 Pro over **BLE KISS**, to **DireWolf** (or any KISS TNC) over
 **TCP**, and to the global **APRS-IS** network — all three at the same time if you want.
-Chat with ACKs, a live map, a packet monitor, a GPS beacon and an iGate, in one app.
+Support for the [BTECH UV-PRO](#btech-uv-pro--benshi-protocol-experimental) is in, and
+looking for testers. Chat with ACKs, a live map, a packet monitor, a GPS beacon and an
+iGate, in one app.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Android-12%2B-3DDC84?logo=android&logoColor=white)](#build-and-run)
@@ -25,9 +28,13 @@ License: **GPL-3.0-or-later** — see [License](#license)
 | Hardware | How it connects | Status |
 |----------|-----------------|--------|
 | **Radtel RT-950 Pro** | Bluetooth LE, KISS BLE mode (APRS menu on the radio) | Supported — RX confirmed; phone-initiated TX depends on your firmware |
+| **BTECH UV-PRO** | Bluetooth LE, Benshi protocol | **Experimental — not yet confirmed on hardware**, see below |
 | **DireWolf** (PC/Raspberry Pi) | KISS over TCP (`KISSPORT`) | Supported |
 | **Any KISS TNC** reachable over TCP | KISS over TCP | Should work — reports welcome |
 | No radio at all | APRS-IS over the internet | Supported |
+
+Pick your radio in **More → Links & network → Bluetooth** before scanning. The two
+handhelds do not share a protocol, so the app needs to know which one it is talking to.
 
 The radio is **optional**: with just APRS-IS you already get chat, the map and the logs.
 
@@ -106,17 +113,50 @@ Three independent paths can run at the same time.
      (port 14580)   └─────────────┘
 ```
 
-### 1. BLE KISS (Radtel RT-950 Pro)
+### 1. BLE (handheld radio)
 
-`BleUartManager` + `BleUartProfile`. Radio menu: APRS → **KISS(BLE)** with TX and RX enabled. Disconnect other BLE apps (for example CPS programmers) so the radio advertises.
+`BleUartManager` owns the GATT state machine — scan, connect, MTU, notifications, write
+queue — and knows nothing about any particular radio. Everything model specific lives in a
+[`BleRadioProfile`](app/src/main/java/com/aprs/radiochat/data/ble/BleRadioProfile.kt):
+which attributes to look for, how to recognise the device while scanning, and how AX.25
+payloads are framed. Adding a radio is a new profile, never a change to the manager.
+
+#### Radtel RT-950 Pro — plain KISS
+
+Radio menu: APRS → **KISS(BLE)** with TX and RX enabled. Disconnect other BLE apps (for
+example CPS programmers) so the radio advertises.
 
 | Role | UUID |
 |------|------|
 | Service | `0000FFE0-0000-1000-8000-00805F9B34FB` |
 | Notify (radio → app) | `0000FFE1-…` |
-| Write (app → radio) | `0000FF31-…` (fallback `FFE2` on some firmware) |
+| Write (app → radio) | `0000FF31-…` (fallback `FFE2`, `FFE1` on some firmware) |
 
 Community reference: [mecta02/aprs](https://github.com/mecta02/aprs).
+
+#### BTECH UV-PRO — Benshi protocol (experimental)
+
+The UV-PRO and its siblings (Vero VR-N76, RadioOddity GA-5WB) do **not** speak KISS over
+BLE. They expose a vendor service and a framed message protocol in which AX.25 frames
+travel as fragmented "TNC data" messages. Two differences matter at the transport level:
+the RX characteristic is an **indication** rather than a notification, and messages are
+atomic, so one is never split across GATT writes.
+
+| Role | UUID |
+|------|------|
+| Service | `00001100-d102-11e1-9b23-00025b00a5a5` |
+| Indicate (radio → app) | `00001102-d102-11e1-9b23-00025b00a5a5` |
+| Write (app → radio) | `00001101-d102-11e1-9b23-00025b00a5a5` |
+
+Protocol reference: [khusmann/benlink](https://github.com/khusmann/benlink), which
+reverse engineered these radios.
+
+> **Status:** the UUIDs above come straight from benlink and are solid. The three command
+> identifiers in `BenshiProtocol` have **not been confirmed against a physical UV-PRO**.
+> If the radio connects but no packets flow, those constants are the first place to look.
+> Framing, fragment assembly and the transport are covered by unit tests and are
+> independent of them. **Reports from UV-PRO owners are very welcome** — please open an
+> issue with a packet capture.
 
 BLE is **optional** (`bluetooth_le` is not required). The app works with DireWolf and/or APRS-IS alone.
 
@@ -225,7 +265,7 @@ com.aprs.radiochat
 ├── RadioChatApp.kt          Application + DI
 ├── MainActivity.kt           Permissions, FGS start
 ├── data/
-│   ├── ble/                  BLE scan, GATT, KISS write
+│   ├── ble/                  GATT state machine + per-radio profiles
 │   ├── kiss/                 KissCodec, KissFrameHub
 │   ├── tnc/                  TcpKissTncClient
 │   ├── aprs/                 AX.25, messages, position, Mic-E, symbols, geo

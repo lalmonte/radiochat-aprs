@@ -102,7 +102,10 @@ class RadioChatApp : Application() {
             this,
             settingsRepository
         )
-        bleUartManager = BleUartManager(this)
+        bleUartManager = BleUartManager(
+            this,
+            selectedModel = { settingsRepository.radioModel.value }
+        )
         tcpKissTncClient = TcpKissTncClient()
         kissFrameHub = KissFrameHub(bleUartManager, tcpKissTncClient)
         aprsIsClient = AprsIsClient()
