@@ -26,14 +26,18 @@ License: **GPL-3.0-or-later** — see [License](#license)
 
 | Hardware | How it connects | Status |
 |----------|-----------------|--------|
-| **Radtel RT-950 Pro** | Bluetooth LE, KISS BLE mode (APRS menu on the radio) | Receive only — its firmware does not key PTT from phone KISS |
-| **BTECH UV-PRO** | Bluetooth LE, Benshi protocol | Receive **and transmit** — RX confirmed on hardware, TX in testing |
+| **BTECH UV-PRO** | Bluetooth LE, Benshi protocol | **Transmit and receive**, both confirmed on hardware |
+| **Radtel RT-950 Pro** | Bluetooth LE, KISS BLE mode (APRS menu on the radio) | Receive only — ideal as an [iGate](#igate-rf--is) receiver |
 | **DireWolf** (PC/Raspberry Pi) | KISS over TCP (`KISSPORT`) | Supported |
 | **Any KISS TNC** reachable over TCP | KISS over TCP | Should work — reports welcome |
 | No radio at all | APRS-IS over the internet | Supported |
 
 Pick your radio in **More → Links & network → Bluetooth** before scanning. The two
 handhelds do not share a protocol, so the app needs to know which one it is talking to.
+
+Receive-only is not a dead end: a radio that only listens is exactly what an **iGate**
+needs, so an RT-950 Pro and a phone make a complete RF → APRS-IS gateway. For two-way
+messaging over the air, use the UV-PRO — or pair any radio with DireWolf or APRS-IS.
 
 The radio is **optional**: with just APRS-IS you already get chat, the map and the logs.
 
@@ -123,6 +127,13 @@ payloads are framed. Adding a radio is a new profile, never a change to the mana
 
 #### Radtel RT-950 Pro — plain KISS
 
+**Receive only over Bluetooth.** Its firmware does not key PTT from phone-side KISS: the
+write is accepted on FF31 and nothing goes out on the air, so the app marks the model
+receive-only rather than reporting messages as sent that never left the phone.
+
+That makes it a natural **[iGate](#igate-rf--is) receiver** — gatewaying RF to APRS-IS only
+ever needs to listen. Pair it with DireWolf or APRS-IS when you also want to transmit.
+
 Radio menu: APRS → **KISS(BLE)** with TX and RX enabled. Disconnect other BLE apps (for
 example CPS programmers) so the radio advertises.
 
@@ -136,9 +147,9 @@ Community reference: [mecta02/aprs](https://github.com/mecta02/aprs).
 
 #### BTECH UV-PRO — Benshi protocol
 
-The UV-PRO **transmits and receives** APRS messages over Bluetooth — unlike the RT-950
-Pro, it keys up on a frame handed to it over BLE, so the radio alone is a complete APRS
-station with no TNC, no cable and no internet.
+The UV-PRO **transmits and receives** APRS messages over Bluetooth. Unlike the RT-950 Pro
+it keys up on a frame handed to it over BLE, so the radio and a phone alone make a complete
+two-way APRS station: no TNC, no cable, no internet.
 
 It and its siblings (Vero VR-N76, RadioOddity GA-5WB) do **not** speak KISS over
 BLE. They expose a vendor service and a framed message protocol in which AX.25 frames
@@ -171,9 +182,9 @@ In a TNC data fragment the channel id is a **trailing** byte, not a header, whic
 to get backwards.
 
 > **Status:** UUIDs, command identifiers and framing all come from the benlink source.
-> Receiving is confirmed on a real UV-PRO. Reports from other owners — and from the Vero
-> and RadioOddity variants, which nobody has tried yet — are very welcome; please open an
-> issue.
+> **Receiving and transmitting are both confirmed on a real UV-PRO.** The Vero VR-N76 and
+> RadioOddity GA-5WB share the firmware but nobody has tried them yet — reports from those
+> owners are very welcome; please open an issue.
 
 BLE is **optional** (`bluetooth_le` is not required). The app works with DireWolf and/or APRS-IS alone.
 
@@ -277,7 +288,9 @@ on APRS-IS at all, and an ACK sent to the internet would never reach them.
 
 ### iGate (RF → IS)
 
-`IGateService` forwards KISS frames to APRS-IS when the session is **verified** and iGate is enabled. It skips TCPIP/TCPXX paths, third-party `}` wrappers, duplicates, and rate-limits (~1.2 s) so the server does not drop the client.
+`IGateService` forwards KISS frames to APRS-IS when the session is **verified** and iGate is enabled.
+A **receive-only radio is enough** — gatewaying never transmits on RF — which is what makes
+the RT-950 Pro a good fit for this role. It skips TCPIP/TCPXX paths, third-party `}` wrappers, duplicates, and rate-limits (~1.2 s) so the server does not drop the client.
 
 ### Live logs
 
