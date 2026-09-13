@@ -1,14 +1,13 @@
 # RadioChat APRS
 
-**A free, open-source APRS client for Android that turns a
-[Radtel RT-950 Pro](#radtel-rt-950-pro--plain-kiss) into a full APRS station over
-Bluetooth — no TNC cable, no extra hardware.**
+**A free, open-source APRS client for Android that turns a handheld into a full APRS
+station over Bluetooth — no TNC cable, no extra hardware.**
 
-It connects to the RT-950 Pro over **BLE KISS**, to **DireWolf** (or any KISS TNC) over
-**TCP**, and to the global **APRS-IS** network — all three at the same time if you want.
-Support for the [BTECH UV-PRO](#btech-uv-pro--benshi-protocol-experimental) is in, and
-looking for testers. Chat with ACKs, a live map, a packet monitor, a GPS beacon and an
-iGate, in one app.
+With the **[BTECH UV-PRO](#btech-uv-pro--benshi-protocol)** it both **sends and receives**
+APRS messages over Bluetooth. The **[Radtel RT-950 Pro](#radtel-rt-950-pro--plain-kiss)**
+is supported for receive. It also talks to **DireWolf** (or any KISS TNC) over **TCP** and
+to the global **APRS-IS** network — all of them at once if you want. Chat with ACKs, a live
+map, a packet monitor, a GPS beacon and an iGate, in one app.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Android-12%2B-3DDC84?logo=android&logoColor=white)](#build-and-run)
@@ -103,7 +102,8 @@ Three independent paths can run at the same time.
 
 ```
                     ┌─────────────┐
-   Radtel RT-950 ──►│ BLE KISS    │──┐
+   BTECH UV-PRO ◄──►│ BLE         │──┐   TX + RX
+   Radtel RT-950 ──►│             │  │   RX only
                     └─────────────┘  │
                     ┌─────────────┐  │    KissFrameHub
    DireWolf TCP ───►│ KISS TCP    │──┼──► Chat / Map / Logs / iGate
@@ -134,9 +134,13 @@ example CPS programmers) so the radio advertises.
 
 Community reference: [mecta02/aprs](https://github.com/mecta02/aprs).
 
-#### BTECH UV-PRO — Benshi protocol (experimental)
+#### BTECH UV-PRO — Benshi protocol
 
-The UV-PRO and its siblings (Vero VR-N76, RadioOddity GA-5WB) do **not** speak KISS over
+The UV-PRO **transmits and receives** APRS messages over Bluetooth — unlike the RT-950
+Pro, it keys up on a frame handed to it over BLE, so the radio alone is a complete APRS
+station with no TNC, no cable and no internet.
+
+It and its siblings (Vero VR-N76, RadioOddity GA-5WB) do **not** speak KISS over
 BLE. They expose a vendor service and a framed message protocol in which AX.25 frames
 travel as fragmented "TNC data" messages. Two differences matter at the transport level:
 the RX characteristic is an **indication** rather than a notification, and messages are
@@ -167,8 +171,9 @@ In a TNC data fragment the channel id is a **trailing** byte, not a header, whic
 to get backwards.
 
 > **Status:** UUIDs, command identifiers and framing all come from the benlink source.
-> Confirmed to connect on a real UV-PRO; **end-to-end packet flow is still being
-> verified**. Reports from UV-PRO owners are very welcome — please open an issue.
+> Receiving is confirmed on a real UV-PRO. Reports from other owners — and from the Vero
+> and RadioOddity variants, which nobody has tried yet — are very welcome; please open an
+> issue.
 
 BLE is **optional** (`bluetooth_le` is not required). The app works with DireWolf and/or APRS-IS alone.
 
@@ -377,7 +382,9 @@ Open the folder in Android Studio (Ladybug / Koala or newer) and sync Gradle.
 1. Set **your callsign with SSID** (example: `HI3LAG-7`).
 2. **APRS-IS:** passcode, Connect. Optional: enable iGate after verified login.
 3. **DireWolf:** same LAN, `KISSPORT 8001`, connect KISS TCP. Keep the PC’s SSID different (example: `HI3LAG-3`).
-4. **Radio:** KISS BLE mode, scan and connect the RT-950 Pro.
+4. **Radio:** pick your model in **Links & network → Bluetooth**, then scan and connect.
+   On the RT-950 Pro, enable KISS(BLE) in the radio's APRS menu first; the UV-PRO needs no
+   menu change.
 5. Optional: enable **GPS beacon** (notification + background tracking).
 
 Unit tests (JUnit 4) live under `app/src/test`:

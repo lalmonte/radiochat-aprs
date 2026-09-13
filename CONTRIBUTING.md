@@ -16,7 +16,8 @@ APRS bugs are hard to reproduce without context, so please include:
 
 - Android version and phone model
 - App version (**More → About**)
-- Which transport was in use: BLE (RT-950 Pro), KISS TCP (DireWolf), or APRS-IS
+- Which transport was in use: BLE (UV-PRO or RT-950 Pro), KISS TCP (DireWolf), or APRS-IS
+- For a BLE problem, which radio model is selected in **Links & network → Bluetooth**
 - Your SSID setup, if it is relevant (for example: phone `HI3LAG-7`, DireWolf `HI3LAG-3`)
 - The **raw packet** if you have it — enable the `RAW` chip in the Logs tab
 - Relevant `adb logcat` output
@@ -33,9 +34,10 @@ Android Studio (Ladybug / Koala or newer), JDK 17.
 ./gradlew :app:test
 ```
 
-There is no emulator path for the radio itself: BLE KISS needs a real RT-950 Pro. You can
-develop and test most of the app against **DireWolf over KISS TCP** and **APRS-IS**, which
-need no special hardware.
+There is no emulator path for the radios: BLE needs a real UV-PRO or RT-950 Pro, and the
+two speak different protocols, so a change to one cannot be assumed to hold for the other.
+You can develop and test most of the app against **DireWolf over KISS TCP** and
+**APRS-IS**, which need no special hardware.
 
 ## Code style
 

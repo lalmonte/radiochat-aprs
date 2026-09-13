@@ -73,8 +73,10 @@ project — and it is not sent anywhere else.
 
 ## Bluetooth
 
-Bluetooth permissions are used solely to find and talk to your radio (Radtel RT-950 Pro) over
-BLE KISS. No Bluetooth data leaves your device.
+Bluetooth permissions are used solely to find and talk to your radio — a BTECH UV-PRO or a
+Radtel RT-950 Pro — over BLE. This carries APRS traffic between the app and the radio, and
+with the UV-PRO it is also how the app hands the radio frames to transmit. No Bluetooth
+data leaves your device, and none of it reaches the developer.
 
 ## Children
 
