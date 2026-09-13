@@ -34,5 +34,17 @@ data class ChatMessage(
     val isRead: Boolean = false,
     /** APRS id `{01` used to match ACK/REJ. */
     val messageId: String? = null,
-    val ackStatus: MessageAckStatus = MessageAckStatus.NONE
-)
+    val ackStatus: MessageAckStatus = MessageAckStatus.NONE,
+    /** How many times this outgoing message has been sent again by hand. */
+    val retryCount: Int = 0
+) {
+    /**
+     * Whether offering to send this again makes sense.
+     *
+     * Anything of ours the far end has not confirmed: still waiting for an ACK, rejected,
+     * or sent without ever asking for one. A delivered message never needs resending, and
+     * neither does anything we received.
+     */
+    val canResend: Boolean
+        get() = isOutgoing && ackStatus != MessageAckStatus.DELIVERED
+}

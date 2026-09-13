@@ -131,6 +131,12 @@ class ChatViewModel(
         }
     }
 
+    /** Sends an unconfirmed outgoing message again, reusing its APRS message id. */
+    fun resend(message: ChatMessage) {
+        if (!message.canResend) return
+        chatRepository.resendMessage(message.id)
+    }
+
     fun requestDeleteConversation(peer: String) {
         _confirmDeletePeer.value = peer.uppercase()
     }

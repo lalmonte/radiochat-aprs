@@ -212,12 +212,7 @@ class ChatRepository(
         val msgId = "%02d".format(msgSeq.getAndIncrement() % 100)
         val path = resolveTxPath() ?: return false
 
-        val ok = when (path) {
-            TxPath.APRS_IS -> sendViaInternet(myCall, to, body, msgId)
-            TxPath.KISS_TCP -> sendViaKissTcp(to, body, msgId)
-            TxPath.BLE -> sendViaBle(to, body, msgId)
-        }
-        if (!ok) return false
+        if (!transmit(path, myCall, to, body, msgId)) return false
 
         _sendError.value = null
         append(
@@ -228,11 +223,7 @@ class ChatRepository(
                 text = body,
                 timestamp = System.currentTimeMillis(),
                 isOutgoing = true,
-                source = when (path) {
-                    TxPath.APRS_IS -> MessageSource.OUTGOING
-                    TxPath.KISS_TCP -> MessageSource.OUTGOING_TCP
-                    TxPath.BLE -> MessageSource.OUTGOING_BLE
-                },
+                source = sourceFor(path),
                 peer = to,
                 isRead = true,
                 messageId = msgId,
@@ -240,6 +231,77 @@ class ChatRepository(
             )
         )
         return true
+    }
+
+    /**
+     * Sends an unconfirmed outgoing message again.
+     *
+     * The APRS message id is **reused on purpose**. It is what the far end matches an ACK
+     * against, so the reply lands on this same message rather than creating a second one,
+     * and a correspondent who did receive the original recognises the retry as a
+     * duplicate and simply re-ACKs it instead of showing the text twice. That is how an
+     * APRS retry is meant to work on a lossy link.
+     *
+     * The path is resolved fresh, so a message that failed over one link can go out over
+     * whatever is up now.
+     *
+     * @param id the internal message id, not the APRS msgid.
+     */
+    fun resendMessage(id: String): Boolean {
+        val original = _messages.value.firstOrNull { it.id == id }
+        if (original == null) {
+            _sendError.value = "Message no longer exists"
+            return false
+        }
+        if (!original.canResend) return false
+
+        val myCall = myCallsign().ifBlank { "N0CALL" }
+        val to = original.peer.uppercase()
+        // Outgoing messages always carry one, but never retry without an id: an ACK
+        // could not be matched back and the message would sit unconfirmed forever.
+        val msgId = original.messageId?.trim()?.ifBlank { null }
+            ?: "%02d".format(msgSeq.getAndIncrement() % 100)
+
+        val path = resolveTxPath() ?: return false
+        if (!transmit(path, myCall, to, original.text, msgId)) return false
+
+        _sendError.value = null
+        _messages.update { list ->
+            list.map { msg ->
+                if (msg.id != id) {
+                    msg
+                } else {
+                    msg.copy(
+                        source = sourceFor(path),
+                        messageId = msgId,
+                        // Back to a single tick: it is in flight again, not rejected.
+                        ackStatus = MessageAckStatus.SENT,
+                        retryCount = msg.retryCount + 1
+                    )
+                }
+            }
+        }
+        schedulePersist()
+        Log.i(TAG, "Resent $msgId to $to over $path (retry ${original.retryCount + 1})")
+        return true
+    }
+
+    private fun transmit(
+        path: TxPath,
+        myCall: String,
+        to: String,
+        body: String,
+        msgId: String
+    ): Boolean = when (path) {
+        TxPath.APRS_IS -> sendViaInternet(myCall, to, body, msgId)
+        TxPath.KISS_TCP -> sendViaKissTcp(to, body, msgId)
+        TxPath.BLE -> sendViaBle(to, body, msgId)
+    }
+
+    private fun sourceFor(path: TxPath): MessageSource = when (path) {
+        TxPath.APRS_IS -> MessageSource.OUTGOING
+        TxPath.KISS_TCP -> MessageSource.OUTGOING_TCP
+        TxPath.BLE -> MessageSource.OUTGOING_BLE
     }
 
     fun clearSendError() {

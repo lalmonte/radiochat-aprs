@@ -74,6 +74,7 @@ class ChatStore(context: Context) {
                         .put("isRead", msg.isRead)
                         .put("messageId", msg.messageId ?: "")
                         .put("ackStatus", msg.ackStatus.name)
+                        .put("retryCount", msg.retryCount)
                 )
             }
             val tmp = File(file.parentFile, "$FILE_NAME.tmp")
@@ -115,7 +116,9 @@ class ChatStore(context: Context) {
                 // Old history without the field: already considered read
                 isRead = obj.optBoolean("isRead", true),
                 messageId = messageId,
-                ackStatus = ackStatus
+                ackStatus = ackStatus,
+                // Absent in history written before resending existed
+                retryCount = obj.optInt("retryCount", 0)
             )
         } catch (e: Exception) {
             Log.w(TAG, "Invalid message in store: ${e.message}")

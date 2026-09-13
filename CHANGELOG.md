@@ -28,6 +28,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - ACKs now reply over the same link the message arrived on whenever that link can
   transmit, instead of falling back to the internet for a station that may not be there.
 
+- **Resend for unconfirmed messages.** Long-pressing an outgoing message that has not
+  been acknowledged offers *Send again*. The APRS message id is reused, so an ACK still
+  matches the original bubble and a correspondent who already received it re-ACKs the
+  duplicate rather than showing the text twice. Retries are counted and shown as `↻n`.
+
 ### Changed
 
 - The BLE layer was split into a GATT state machine that knows nothing about any radio

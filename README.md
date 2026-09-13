@@ -252,6 +252,12 @@ on APRS-IS at all, and an ACK sent to the internet would never reach them.
 - Incoming chat is **exact callsign + SSID**. `HI3LAG-7` ≠ `HI3LAG-3` ≠ `HI3LAG`. Bulletins `BLN*` are still accepted.
 - ACK is the exception: addressed to this SSID, **or** to the base callsign without SSID (`:HI3LAG :ack01`).
 - Status: `NONE` / `SENT` (one check) / `DELIVERED` (two checks) / `REJECTED`.
+- **Resending:** long-press any outgoing message the far end has not confirmed to get
+  *Send again*. The APRS message id is reused on purpose — an ACK then lands on the same
+  bubble instead of creating a second one, and a station that did receive the original
+  recognises the retry as a duplicate and simply re-ACKs it. A retried message shows `↻n`
+  next to its timestamp. The path is resolved again on each try, so a message that failed
+  over one link goes out over whatever is up now.
 - History is persisted (`ChatStore`). Opening a thread marks messages read (unread badge on the list).
 - Own RF echo is ignored unless the addressee is this station.
 

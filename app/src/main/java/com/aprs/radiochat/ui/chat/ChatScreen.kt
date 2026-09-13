@@ -18,8 +18,10 @@
  */
 package com.aprs.radiochat.ui.chat
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,7 +55,10 @@ import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -71,11 +76,15 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -448,7 +457,7 @@ private fun ConversationThread(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(thread, key = { it.id }) { msg ->
-                    MessageBubble(msg)
+                    MessageBubble(msg, onResend = { viewModel.resend(msg) })
                 }
             }
             Row(
@@ -499,8 +508,14 @@ private fun ErrorBanner(error: String, onClear: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: ChatMessage) {
+private fun MessageBubble(
+    message: ChatMessage,
+    onResend: () -> Unit
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
     val align = if (message.isOutgoing) Alignment.CenterEnd else Alignment.CenterStart
     val bg = if (message.isOutgoing) {
         MaterialTheme.colorScheme.primary
@@ -536,7 +551,18 @@ private fun MessageBubble(message: ChatMessage) {
             modifier = Modifier
                 .align(align)
                 .widthIn(max = 320.dp)
-                .background(bg, RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(bg)
+                .combinedClickable(
+                    // Nothing on a plain tap: only the long press opens the menu, and
+                    // only for something of ours the far end has not confirmed.
+                    enabled = message.canResend,
+                    onClick = {},
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menuOpen = true
+                    }
+                )
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -560,12 +586,33 @@ private fun MessageBubble(message: ChatMessage) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
+                if (message.retryCount > 0) {
+                    Text(
+                        text = "\u21BB${message.retryCount}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = fg.copy(alpha = 0.7f)
+                    )
+                }
                 Text(
                     text = time,
                     style = MaterialTheme.typography.labelSmall,
                     color = fg.copy(alpha = 0.7f)
                 )
                 AckStatusIcon(message = message, bubbleFg = fg)
+            }
+
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Send again") },
+                    leadingIcon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
+                    onClick = {
+                        menuOpen = false
+                        onResend()
+                    }
+                )
             }
         }
     }
