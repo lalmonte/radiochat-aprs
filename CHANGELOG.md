@@ -7,7 +7,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- The map now shows the **© OpenStreetMap contributors** credit, tappable to open the
+  copyright page. The ODbL that covers OSM data requires the attribution to be visible,
+  and it was missing from the released builds.
 
 ## [1.0.1] — 2026-09-12
 

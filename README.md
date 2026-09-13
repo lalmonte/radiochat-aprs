@@ -93,7 +93,7 @@ Bottom navigation (no cross-fade between tabs, to keep the map from blocking the
 |-----|--------|------|
 | Config | `ConnectionScreen` | Callsign, passcode, BLE scan, KISS TCP host/port, APRS-IS server, receive radius (km), iGate, GPS beacon |
 | Chat | `ChatScreen` | Conversation list (swipe to delete) and thread with bubbles, source badges (BLE / TCP / IS), ACK icons |
-| Map | `MapScreen` | OSM tiles, station markers with Hessu APRS symbols, own position, polyline of **sent** beacons only |
+| Map | `MapScreen` | OSM tiles, station markers with Hessu APRS symbols, own position, polyline of **sent** beacons only, ODbL attribution |
 | Logs | `LogsScreen` | Cards for each packet: APRS icon, callsign, route, kind/transport chips, optional RAW. Follows the newest packet when scrolled to the top |
 
 Inside a chat thread, the list jumps to the latest message when you send or when the peer writes.
@@ -524,7 +524,8 @@ keep every freedom the GPL grants you — this is about identity, not permission
 | [hessu/aprs-symbols](https://github.com/hessu/aprs-symbols) | Mixed — see below |
 
 Map data is © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors,
-available under the [ODbL](https://opendatacommons.org/licenses/odbl/).
+available under the [ODbL](https://opendatacommons.org/licenses/odbl/). The credit is shown
+on the map itself, as that licence requires, and tapping it opens the copyright page.
 
 The APRS symbol sheets in `app/src/main/assets/aprs/` come from hessu/aprs-symbols
 (aprs.fi / OH7LZB). That collection is **not under a single licence**: it mixes public
