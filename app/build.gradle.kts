@@ -19,7 +19,7 @@ android {
         targetSdk = 35
         // Overridden by the release workflow from the git tag; see .github/workflows/release.yml
         versionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 1
-        versionName = (project.findProperty("appVersionName") as String?) ?: "1.0.0"
+        versionName = (project.findProperty("appVersionName") as String?) ?: "1.0.1"
     }
 
     signingConfigs {

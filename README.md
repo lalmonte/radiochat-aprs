@@ -14,7 +14,7 @@ map, a packet monitor, a GPS beacon and an iGate, in one app.
 [![Kotlin](https://img.shields.io/badge/Kotlin-Compose-7F52FF?logo=kotlin&logoColor=white)](#architecture)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/luisalmonte)
 
-Application id: `com.aprs.radiochat` · Version `1.0.0`  
+Application id: `com.aprs.radiochat` · Version `1.0.1`  
 minSdk **31** (Android 12+) · targetSdk / compileSdk **35** · Java / Kotlin **17**
 
 Author: Luis Almonte ([HI3LAG](https://www.qrz.com/db/HI3LAG))  

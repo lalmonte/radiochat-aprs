@@ -7,11 +7,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.0.1] — 2026-09-12
+
 ### Added
 
 - **Radio selection for the Bluetooth TNC.** More → Links & network → Bluetooth now has a
   radio picker, and scanning filters for the model you chose.
-- **BTECH UV-PRO support (experimental).** The UV-PRO and its siblings (Vero VR-N76,
+- **BTECH UV-PRO support.** The UV-PRO and its siblings (Vero VR-N76,
   RadioOddity GA-5WB) do not speak KISS over BLE; they use the Benshi protocol, where
   AX.25 frames travel as fragmented "TNC data" messages over an *indication*
   characteristic. UUIDs, command identifiers and framing all follow the
@@ -20,7 +24,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The app now registers for radio events on connect. These radios report nothing until
   asked: registering `HT_STATUS_CHANGED` is what also enables `DATA_RXD`, the event that
   carries received frames. Without it the link comes up and no packet ever arrives.
-
 - **Transmitting over Bluetooth, for radios that can.** Chat messages, ACKs and GPS
   beacons now go out through the radio's BLE TNC when the connected model supports it.
   The UV-PRO does; the RT-950 Pro is marked receive-only, because it accepts the write
@@ -29,7 +32,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   transmits on RF.
 - ACKs now reply over the same link the message arrived on whenever that link can
   transmit, instead of falling back to the internet for a station that may not be there.
-
 - **Resend for unconfirmed messages.** Long-pressing an outgoing message that has not
   been acknowledged offers *Send again*. The APRS message id is reused, so an ACK still
   matches the original bubble and a correspondent who already received it re-ACKs the
@@ -77,5 +79,6 @@ First public release.
 - Signed release APKs are built automatically from a git tag, and published here with a
   SHA-256 checksum you can verify before installing.
 
-[Unreleased]: ../../compare/v1.0.0...HEAD
+[Unreleased]: ../../compare/v1.0.1...HEAD
+[1.0.1]: ../../releases/tag/v1.0.1
 [1.0.0]: ../../releases/tag/v1.0.0
